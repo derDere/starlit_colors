@@ -1,2 +1,2 @@
-# starlit_colors
+# Starlit Colors
 ...
