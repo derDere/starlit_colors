@@ -3,10 +3,20 @@
 
 #include <ncurses.h>
 #include <string>
+#include <vector>
+
+#define R 12
+#define D (2 * R)
+#define MARGIN 5
+#define SCALE 2
 
 using namespace std;
 
 namespace game {
+
+  struct Point {
+    int x, y;
+  };
   
   void initColors();
   
@@ -14,26 +24,26 @@ namespace game {
   class Spot;
   class Star;
   class Kristal;
+
+  typedef vector<vector<Star*>*>* StarGrid;
+
+  StarGrid EmptyStarGrid(int w, int h);
   
   class StarColor {
   private:
-    int _index;
-    int _next;
-    int _style;
-    string _symbol;
     StarColor(int s, string c, int i, int n);
   public:
     ~StarColor();
     
-    int style();
-    string symbol();
-    int index();
-    int next();
+    int style;
+    string symbol;
+    int index;
+    int next;
 
     static const StarColor red;
     static const StarColor yellow;
     static const StarColor green;
-    static const StarColor cyan;
+    static const StarColor blue;
 
     static const StarColor* colors[];
   };
@@ -41,11 +51,12 @@ namespace game {
   //Defines a single Char on the Screen
   class Spot {
   protected:
-    int style, x, y;
-    string symbol;
+    Point pos;
+    int style;
     bool bold;
     bool underlined;
   public:
+    string symbol;
     Spot(int x, int y);
     virtual ~Spot();
     //Gets called each Frame
@@ -56,12 +67,33 @@ namespace game {
 
   class Star: public Spot {
   private:
+    static int rndColor();
+    
     int color;
+
+    void updateVisuals();
   public:
-    Star();
+    Star(int x, int y);
     ~Star();
     void update();
     void hit();
+  };
+
+  class Kristal: public Spot {
+  private:
+    static Kristal* selection;
+    bool diagonal;
+    bool neighbors;
+    bool selected;
+
+    void deselect();
+  public:
+    Kristal(int x, int y);
+    ~Kristal();
+    double angle;
+
+    void select();
+    void activate(StarGrid grid);
   };
 }
 
