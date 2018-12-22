@@ -50,11 +50,6 @@ game::StarColor::StarColor(int s, string c, int i, int n) {
 }
 game::StarColor::~StarColor() {}
 
-/*const game::StarColor game::StarColor::red(STYLE_RED, ".", 0, 1);
-const game::StarColor game::StarColor::yellow(STYLE_YELLOW, ":", 1, 2);
-const game::StarColor game::StarColor::green(STYLE_GREEN, "'", 2, 3);
-const game::StarColor game::StarColor::blue(STYLE_BLUE, "\"", 3, 0);*/
-
 const game::StarColor game::StarColor::red(STYLE_RED, "*", 0, 1);
 const game::StarColor game::StarColor::yellow(STYLE_YELLOW, "*", 1, 2);
 const game::StarColor game::StarColor::green(STYLE_GREEN, "*", 2, 3);
@@ -66,6 +61,42 @@ const game::StarColor* game::StarColor::colors[4] = {
     &game::StarColor::green,
     &game::StarColor::blue
 };
+
+
+// StarColorCount Class ==================================================
+game::StarColorCount::StarColorCount() {
+  this->count[0] = 0;
+  this->count[1] = 0;
+  this->count[2] = 0;
+  this->count[3] = 0;
+}
+
+void game::StarColorCount::add(int index) {
+  this->count[index] += 1;
+}
+
+void game::StarColorCount::sub(int index) {
+  this->count[index] -= 1;
+}
+
+bool game::StarColorCount::check() {
+  if ((this->count[0] + this->count[1] + this->count[2]) == 0) return true;
+  if ((this->count[1] + this->count[2] + this->count[3]) == 0) return true;
+  if ((this->count[0] + this->count[2] + this->count[3]) == 0) return true;
+  if ((this->count[0] + this->count[1] + this->count[3]) == 0) return true;
+  return false;
+}
+
+void game::StarColorCount::draw() {
+  for (int y = 0; y < 4; y++) {
+    const StarColor* sc = game::StarColor::colors[y];
+    attron(COLOR_PAIR(sc->style));
+    mvprintw(MARGIN + y, MARGIN, "%3d", this->count[y]);
+    attroff(COLOR_PAIR(sc->style));
+  }
+}
+
+game::StarColorCount* game::count = new game::StarColorCount();
 
 
 // Spot_Class ==================================================
@@ -82,16 +113,16 @@ game::Spot::~Spot() {
 
 void game::Spot::update() {}
 
-void game::Spot::draw(WINDOW* win) {
-  if(this->bold) wattron(win, A_BOLD);
-  if(this->underlined) wattron(win, A_UNDERLINE);
-  wattron(win,COLOR_PAIR(this->style));
+void game::Spot::draw() {
+  if(this->bold) attron(A_BOLD);
+  if(this->underlined) attron(A_UNDERLINE);
+  attron(COLOR_PAIR(this->style));
   
-  mvwaddstr(win, this->pos.y + MARGIN, (SCALE * this->pos.x) + MARGIN, this->symbol.c_str());
+  mvaddstr(this->pos.y + MARGIN, (SCALE * this->pos.x) + MARGIN, this->symbol.c_str());
   
-  wattroff(win,COLOR_PAIR(this->style));
-  if(this->underlined) wattroff(win, A_UNDERLINE);
-  if(this->bold) wattroff(win, A_BOLD);
+  attroff(COLOR_PAIR(this->style));
+  if(this->underlined) attroff(A_UNDERLINE);
+  if(this->bold) attroff(A_BOLD);
 }
 
 
@@ -102,7 +133,8 @@ int game::Star::rndColor() {
 
 game::Star::Star(int x, int y): Spot(x,y) {
   //this->bold = true;
-  this->color = 3;//game::Star::rndColor();
+  this->isTargeted = false;
+  this->color = (x == 6 && y == 6)?1:2;// game::Star::rndColor();
   this->updateVisuals();
 }
 
@@ -112,6 +144,7 @@ void game::Star::updateVisuals() {
   const StarColor* sc = StarColor::colors[this->color];
   this->style = sc->style;
   this->symbol = sc->symbol;
+  this->draw();
 }
 
 void game::Star::update() {
@@ -120,8 +153,20 @@ void game::Star::update() {
 
 void game::Star::hit() {
   const StarColor* sc = StarColor::colors[this->color];
+  game::count->sub(this->color);
   this->color = sc->next;
+  game::count->add(this->color);
+  game::count->draw();
   this->updateVisuals();
+}
+
+void game::Star::count() {
+  if (this->isTargeted) {
+    game::count->add(this->color);
+  } else {
+    this->symbol = " ";
+    this->draw();
+  }
 }
 
 
@@ -166,17 +211,17 @@ void game::Kristal::select() {
     this->selected = true;
     this->style = STYLE_KRISTAL_1;
     game::Kristal::selection = this;
-    this->draw(stdscr);
+    this->draw();
   }
 }
 
 void game::Kristal::deselect() {
   this->style = STYLE_KRISTAL_0;
   this->selected = false;
-  this->draw(stdscr);
+  this->draw();
 }
 
-bool workStar(game::StarGrid grid, int x, int y) {
+bool workStar(game::StarGrid grid, int x, int y, bool hit) {
   if (x < 0) return false;
   if (x >= (int)grid->size()) return false;
   if (y < 0) return false;
@@ -185,25 +230,28 @@ bool workStar(game::StarGrid grid, int x, int y) {
   game::Star* target = grid->at(x)->at(y);
   
   if (target != NULL) {
-    target->symbol = " ";
-    target->draw(stdscr);
+    if (hit) {
+      target->hit();
+    } else {
+      target->isTargeted = true;
+    }
     return true;
     
   } else
     return false;
 }
 
-void game::Kristal::activate(StarGrid grid) {
+void game::Kristal::WorkKristal(game::StarGrid grid, bool hit) {
   if(this->neighbors) {
     //work neighbors ----------------------------------------
-    workStar(grid, this->pos.x - 1, this->pos.y - 1);
-    workStar(grid, this->pos.x - 1, this->pos.y    );
-    workStar(grid, this->pos.x - 1, this->pos.y + 1);
-    workStar(grid, this->pos.x    , this->pos.y - 1);
-    workStar(grid, this->pos.x    , this->pos.y + 1);
-    workStar(grid, this->pos.x + 1, this->pos.y - 1);
-    workStar(grid, this->pos.x + 1, this->pos.y    );
-    workStar(grid, this->pos.x + 1, this->pos.y + 1);
+    workStar(grid, this->pos.x - 1, this->pos.y - 1, hit);
+    workStar(grid, this->pos.x - 1, this->pos.y    , hit);
+    workStar(grid, this->pos.x - 1, this->pos.y + 1, hit);
+    workStar(grid, this->pos.x    , this->pos.y - 1, hit);
+    workStar(grid, this->pos.x    , this->pos.y + 1, hit);
+    workStar(grid, this->pos.x + 1, this->pos.y - 1, hit);
+    workStar(grid, this->pos.x + 1, this->pos.y    , hit);
+    workStar(grid, this->pos.x + 1, this->pos.y + 1, hit);
     
   } else if (this->diagonal) {
     //work diagonal ----------------------------------------
@@ -211,33 +259,33 @@ void game::Kristal::activate(StarGrid grid) {
     int y = this->pos.y;
     do {
       x--;
-      if(!workStar(grid,x,y))break;
+      if(!workStar(grid,x,y,hit))break;
       y--;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
     x = this->pos.x;
     y = this->pos.y;
     do {
       x++;
-      if(!workStar(grid,x,y))break;
+      if(!workStar(grid,x,y,hit))break;
       y--;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
     x = this->pos.x;
     y = this->pos.y;
     do {
       x--;
-      if(!workStar(grid,x,y))break;
+      if(!workStar(grid,x,y,hit))break;
       y++;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
     x = this->pos.x;
     y = this->pos.y;
     do {
       x++;
-      if(!workStar(grid,x,y))break;
+      if(!workStar(grid,x,y,hit))break;
       y++;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
   } else {
     //work cross over ----------------------------------------
@@ -245,24 +293,32 @@ void game::Kristal::activate(StarGrid grid) {
     int y = this->pos.y;
     do {
       x--;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
     x = this->pos.x;
     y = this->pos.y;
     do {
       x++;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
     x = this->pos.x;
     y = this->pos.y;
     do {
       y--;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
     
     x = this->pos.x;
     y = this->pos.y;
     do {
       y++;
-    } while(workStar(grid,x,y));
+    } while(workStar(grid,x,y,hit));
   }
+}
+
+void game::Kristal::activate(StarGrid grid) {
+  this->WorkKristal(grid, true);
+}
+
+void game::Kristal::markTargets(StarGrid grid) {
+  this->WorkKristal(grid, false);
 }

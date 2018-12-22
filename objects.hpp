@@ -21,6 +21,7 @@ namespace game {
   void initColors();
   
   class StarColor;
+  class StarColorCount;
   class Spot;
   class Star;
   class Kristal;
@@ -48,6 +49,19 @@ namespace game {
     static const StarColor* colors[];
   };
 
+  class StarColorCount {
+  private:
+    int count[4];
+  public:
+    StarColorCount();
+    void add(int index);
+    void sub(int index);
+    bool check();
+    void draw();
+  };
+
+  extern StarColorCount* count;
+
   //Defines a single Char on the Screen
   class Spot {
   protected:
@@ -62,21 +76,25 @@ namespace game {
     //Gets called each Frame
     virtual void update();
     //Draws the Char onto the screen
-    void draw(WINDOW* win);
+    void draw();
   };
 
   class Star: public Spot {
   private:
     static int rndColor();
-    
+   
     int color;
 
     void updateVisuals();
   public:
+    bool isTargeted;
+    
     Star(int x, int y);
     ~Star();
+    
     void update();
     void hit();
+    void count();
   };
 
   class Kristal: public Spot {
@@ -87,6 +105,7 @@ namespace game {
     bool selected;
 
     void deselect();
+    void WorkKristal(StarGrid grid, bool git);
   public:
     Kristal(int x, int y);
     ~Kristal();
@@ -94,6 +113,7 @@ namespace game {
 
     void select();
     void activate(StarGrid grid);
+    void markTargets(StarGrid grid);
   };
 }
 
