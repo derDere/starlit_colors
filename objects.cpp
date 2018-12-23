@@ -2,6 +2,8 @@
 #include <time.h>
 #include <stdlib.h>
 #include <math.h>
+#include <thread>
+#include <chrono>
 #include "objects.hpp"
 
 #define STYLE_NORMAL 1
@@ -11,13 +13,21 @@
 #define STYLE_BLUE 5
 #define STYLE_KRISTAL_0 6
 #define STYLE_KRISTAL_1 7
+#define STYLE_BULLET 8
 
 using namespace std;
 
 
+int game::startColor = 0;
+int game::ani_t = ANI_TIME;
+game::StarColorCount* game::count = new game::StarColorCount();
+
+
 void game::initColors() {
   srand(time(NULL));
-    
+
+  game::startColor = game::rndColor();
+  
   init_pair(STYLE_NORMAL,    COLOR_WHITE,   COLOR_BLACK);
   init_pair(STYLE_RED,       COLOR_RED,     COLOR_BLACK);
   init_pair(STYLE_YELLOW,    COLOR_YELLOW,  COLOR_BLACK);
@@ -25,6 +35,12 @@ void game::initColors() {
   init_pair(STYLE_BLUE,      COLOR_BLUE,    COLOR_BLACK);
   init_pair(STYLE_KRISTAL_0, COLOR_MAGENTA, COLOR_BLACK);
   init_pair(STYLE_KRISTAL_1, COLOR_WHITE,   COLOR_MAGENTA);
+  init_pair(STYLE_BULLET, COLOR_WHITE,   COLOR_WHITE);
+}
+
+
+int game::rndColor() {
+  return rand() % 4;
 }
 
 
@@ -32,6 +48,19 @@ game::StarGrid game::EmptyStarGrid(int w, int h) {
   game::StarGrid result = new vector<vector<game::Star*>*>();
   for (int i = 0; i < w; i++) {
     vector<game::Star*>* line = new vector<game::Star*>();
+    for (int j = 0; j < h; j++) {
+      line->push_back(NULL);
+    }
+    result->push_back(line);
+  }
+  return result;
+}
+
+
+game::KristalGrid game::EmptyKristalGrid(int w, int h) {
+  game::KristalGrid result = new vector<vector<game::Kristal*>*>();
+  for (int i = 0; i < w; i++) {
+    vector<game::Kristal*>* line = new vector<game::Kristal*>();
     for (int j = 0; j < h; j++) {
       line->push_back(NULL);
     }
@@ -96,8 +125,6 @@ void game::StarColorCount::draw() {
   }
 }
 
-game::StarColorCount* game::count = new game::StarColorCount();
-
 
 // Spot_Class ==================================================
 game::Spot::Spot(int x, int y) {
@@ -127,14 +154,9 @@ void game::Spot::draw() {
 
 
 // Star_Class ==================================================
-int game::Star::rndColor() {
-  return rand() % 4;
-}
-
 game::Star::Star(int x, int y): Spot(x,y) {
-  //this->bold = true;
-  this->isTargeted = false;
-  this->color = (x == 6 && y == 6)?1:2;// game::Star::rndColor();
+  //this->isTargeted = false;
+  this->color = game::startColor;
   this->updateVisuals();
 }
 
@@ -152,6 +174,7 @@ void game::Star::update() {
 }
 
 void game::Star::hit() {
+  // Updating Color ----------
   const StarColor* sc = StarColor::colors[this->color];
   game::count->sub(this->color);
   this->color = sc->next;
@@ -160,13 +183,17 @@ void game::Star::hit() {
   this->updateVisuals();
 }
 
+void game::Star::drawBullet() {
+  // Drawing Bullet ----------
+  attron(COLOR_PAIR(STYLE_NORMAL));
+  mvaddstr(this->pos.y + MARGIN, (SCALE * this->pos.x) + MARGIN, "0");
+  attroff(COLOR_PAIR(STYLE_NORMAL));
+  if (game::ani_t > 0)
+    refresh();
+}
+
 void game::Star::count() {
-  if (this->isTargeted) {
-    game::count->add(this->color);
-  } else {
-    this->symbol = " ";
-    this->draw();
-  }
+  game::count->add(this->color);
 }
 
 
@@ -221,7 +248,7 @@ void game::Kristal::deselect() {
   this->draw();
 }
 
-bool workStar(game::StarGrid grid, int x, int y, bool hit) {
+bool workStar(game::StarGrid grid, int x, int y, bool bullet) {
   if (x < 0) return false;
   if (x >= (int)grid->size()) return false;
   if (y < 0) return false;
@@ -230,95 +257,80 @@ bool workStar(game::StarGrid grid, int x, int y, bool hit) {
   game::Star* target = grid->at(x)->at(y);
   
   if (target != NULL) {
-    if (hit) {
+    if (bullet)
+      target->drawBullet();
+    else
       target->hit();
-    } else {
-      target->isTargeted = true;
-    }
     return true;
     
   } else
     return false;
 }
 
-void game::Kristal::WorkKristal(game::StarGrid grid, bool hit) {
+void game::Kristal::activate(StarGrid grid) {
   if(this->neighbors) {
-    //work neighbors ----------------------------------------
-    workStar(grid, this->pos.x - 1, this->pos.y - 1, hit);
-    workStar(grid, this->pos.x - 1, this->pos.y    , hit);
-    workStar(grid, this->pos.x - 1, this->pos.y + 1, hit);
-    workStar(grid, this->pos.x    , this->pos.y - 1, hit);
-    workStar(grid, this->pos.x    , this->pos.y + 1, hit);
-    workStar(grid, this->pos.x + 1, this->pos.y - 1, hit);
-    workStar(grid, this->pos.x + 1, this->pos.y    , hit);
-    workStar(grid, this->pos.x + 1, this->pos.y + 1, hit);
+    // work neighbors ----------------------------------------
+    // Draw Bullets
+    workStar(grid, this->pos.x + 1, this->pos.y - 1, true);
+    workStar(grid, this->pos.x + 1, this->pos.y    , true);
+    workStar(grid, this->pos.x + 1, this->pos.y + 1, true);
+    workStar(grid, this->pos.x    , this->pos.y + 1, true);
+    workStar(grid, this->pos.x - 1, this->pos.y + 1, true);
+    workStar(grid, this->pos.x - 1, this->pos.y    , true);
+    workStar(grid, this->pos.x - 1, this->pos.y - 1, true);
+    workStar(grid, this->pos.x    , this->pos.y - 1, true);
+    // Wait
+    this_thread::sleep_for(chrono::milliseconds(ani_t));
+    // Hit
+    workStar(grid, this->pos.x + 1, this->pos.y - 1, false);
+    workStar(grid, this->pos.x + 1, this->pos.y    , false);
+    workStar(grid, this->pos.x + 1, this->pos.y + 1, false);
+    workStar(grid, this->pos.x    , this->pos.y + 1, false);
+    workStar(grid, this->pos.x - 1, this->pos.y + 1, false);
+    workStar(grid, this->pos.x - 1, this->pos.y    , false);
+    workStar(grid, this->pos.x - 1, this->pos.y - 1, false);
+    workStar(grid, this->pos.x    , this->pos.y - 1, false);
     
   } else if (this->diagonal) {
     //work diagonal ----------------------------------------
-    int x = this->pos.x;
-    int y = this->pos.y;
+    bool ne = true, se = true, sw = true, nw = true;
+    int r = 0;
     do {
-      x--;
-      if(!workStar(grid,x,y,hit))break;
-      y--;
-    } while(workStar(grid,x,y,hit));
-    
-    x = this->pos.x;
-    y = this->pos.y;
-    do {
-      x++;
-      if(!workStar(grid,x,y,hit))break;
-      y--;
-    } while(workStar(grid,x,y,hit));
-    
-    x = this->pos.x;
-    y = this->pos.y;
-    do {
-      x--;
-      if(!workStar(grid,x,y,hit))break;
-      y++;
-    } while(workStar(grid,x,y,hit));
-    
-    x = this->pos.x;
-    y = this->pos.y;
-    do {
-      x++;
-      if(!workStar(grid,x,y,hit))break;
-      y++;
-    } while(workStar(grid,x,y,hit));
+      r++;
+      // Draw Bullets
+      if (ne) ne = workStar(grid, this->pos.x + r, this->pos.y - r, true);
+      if (se) se = workStar(grid, this->pos.x + r, this->pos.y + r, true);
+      if (sw) sw = workStar(grid, this->pos.x - r, this->pos.y + r, true);
+      if (nw) nw = workStar(grid, this->pos.x - r, this->pos.y - r, true);
+      //Wait
+      this_thread::sleep_for(chrono::milliseconds(ani_t));
+      // Hit
+      if (ne) ne = workStar(grid, this->pos.x + r, this->pos.y - r, false);
+      if (se) se = workStar(grid, this->pos.x + r, this->pos.y + r, false);
+      if (sw) sw = workStar(grid, this->pos.x - r, this->pos.y + r, false);
+      if (nw) nw = workStar(grid, this->pos.x - r, this->pos.y - r, false);
+      
+    } while(ne || se || sw || nw);
     
   } else {
     //work cross over ----------------------------------------
-    int x = this->pos.x;
-    int y = this->pos.y;
+    bool n = true, e = true, s = true, w = true;
+    int r = 0;
     do {
-      x--;
-    } while(workStar(grid,x,y,hit));
-    
-    x = this->pos.x;
-    y = this->pos.y;
-    do {
-      x++;
-    } while(workStar(grid,x,y,hit));
-    
-    x = this->pos.x;
-    y = this->pos.y;
-    do {
-      y--;
-    } while(workStar(grid,x,y,hit));
-    
-    x = this->pos.x;
-    y = this->pos.y;
-    do {
-      y++;
-    } while(workStar(grid,x,y,hit));
+      r++;
+      // Draw Bullets
+      if (n) n = workStar(grid, this->pos.x, this->pos.y - r, true);
+      if (e) e = workStar(grid, this->pos.x + r, this->pos.y, true);
+      if (s) s = workStar(grid, this->pos.x, this->pos.y + r, true);
+      if (w) w = workStar(grid, this->pos.x - r, this->pos.y, true);
+      // Wait
+      this_thread::sleep_for(chrono::milliseconds(ani_t));
+      // Hit
+      if (n) n = workStar(grid, this->pos.x, this->pos.y - r, false);
+      if (e) e = workStar(grid, this->pos.x + r, this->pos.y, false);
+      if (s) s = workStar(grid, this->pos.x, this->pos.y + r, false);
+      if (w) w = workStar(grid, this->pos.x - r, this->pos.y, false);
+      
+    } while (n || e || s || w);
   }
-}
-
-void game::Kristal::activate(StarGrid grid) {
-  this->WorkKristal(grid, true);
-}
-
-void game::Kristal::markTargets(StarGrid grid) {
-  this->WorkKristal(grid, false);
 }

@@ -9,6 +9,8 @@
 #define D (2 * R)
 #define MARGIN 5
 #define SCALE 2
+#define ANI_TIME 50;
+#define KRISTAL_QUANTITY 0.2
 
 using namespace std;
 
@@ -17,6 +19,8 @@ namespace game {
   struct Point {
     int x, y;
   };
+
+  int rndColor();
   
   void initColors();
   
@@ -27,8 +31,14 @@ namespace game {
   class Kristal;
 
   typedef vector<vector<Star*>*>* StarGrid;
+  typedef vector<vector<Kristal*>*>* KristalGrid;
+
+  extern int startColor;
+  extern int ani_t;
+  extern StarColorCount* count;
 
   StarGrid EmptyStarGrid(int w, int h);
+  KristalGrid EmptyKristalGrid(int w, int h);
   
   class StarColor {
   private:
@@ -60,8 +70,6 @@ namespace game {
     void draw();
   };
 
-  extern StarColorCount* count;
-
   //Defines a single Char on the Screen
   class Spot {
   protected:
@@ -81,20 +89,17 @@ namespace game {
 
   class Star: public Spot {
   private:
-    static int rndColor();
-   
     int color;
 
     void updateVisuals();
   public:
-    bool isTargeted;
-    
     Star(int x, int y);
     ~Star();
     
     void update();
     void hit();
     void count();
+    void drawBullet();
   };
 
   class Kristal: public Spot {
@@ -105,7 +110,6 @@ namespace game {
     bool selected;
 
     void deselect();
-    void WorkKristal(StarGrid grid, bool git);
   public:
     Kristal(int x, int y);
     ~Kristal();
@@ -113,7 +117,6 @@ namespace game {
 
     void select();
     void activate(StarGrid grid);
-    void markTargets(StarGrid grid);
   };
 }
 

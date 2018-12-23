@@ -29,16 +29,43 @@ int main(int argc, char* argv[]) {
   start_color();
   clear();
   noecho();
+  cbreak();
+  keypad(stdscr, true);
+  mousemask(BUTTON1_CLICKED, NULL); //ALL_MOUSE_EVENTS, NULL);
   game::initColors();
 
+  // Disabling animation for init sequence ----------
+  game::ani_t = 0;
+
+  // Print start screen
+  attron(A_BOLD | A_UNDERLINE);
+  mvprintw(3, 5, APP);
+  attroff(A_BOLD | A_UNDERLINE);
+  mvaddstr(5, 6, "Try to turn all stars into the same color.");
+  mvaddstr(6, 6, "You can activate the pink cristals to change the star colors.");
+  attron(A_UNDERLINE);
+  mvaddstr(8, 5, "Controls:");
+  attroff(A_UNDERLINE);
+  mvaddstr(9,  6, "n or TAB        =  next cristal");
+  mvaddstr(10, 6, "p or BACKSPACE  =  previous cristal");
+  mvaddstr(11, 6, "e or ENTER      =  activate cristal");
+  mvaddstr(12, 6, "q               =  quit game");
+  mvaddstr(14, 6, "You can also click on the cristals with you left mouse button.");
+  attron(A_BOLD);
+  mvaddstr(16, 6, "[Press any key to start ...]");
+  attroff(A_BOLD);
+  getch();
+  clear();
+  
   // Print Title ----------
-  mvprintw(3, 5, "%s", APP);
+  mvaddstr(3, 5, APP);
 
   // Creating linst ----------
   vector<game::Point*> points;
   vector<game::Star*> stars;
   vector<game::Kristal*> kristals;
   game::StarGrid grid = game::EmptyStarGrid(D,D);
+  game::KristalGrid kgrid = game::EmptyKristalGrid(D,D);
 
   // Crating Points in Circle ----------
   for (int y = 0; y < D; y++)
@@ -46,8 +73,17 @@ int main(int argc, char* argv[]) {
       if(isInRange(x,y))
         points.push_back(new game::Point {x, y});
 
+  // Creating Stars ----------
+  for (vector<game::Point*>::iterator it = points.begin(); it != points.end(); it++) {
+    game::Point* p = *it;
+    game::Star* s = new game::Star(p->x, p->y);
+    stars.push_back(s);
+    s->draw();
+    grid->at(p->x)->at(p->y) = s;
+  }
+
   // Defining Kristal Count ----------
-  unsigned int KristalCount = points.size() * 0.25;
+  unsigned int KristalCount = points.size() * KRISTAL_QUANTITY;
 
   // Creating Kristals at random Points ----------
   while(kristals.size() < KristalCount) {
@@ -56,7 +92,26 @@ int main(int argc, char* argv[]) {
     game::Kristal* k = new game::Kristal(pos->x, pos->y);
     points.erase(points.begin() + rI);
     kristals.push_back(k);
-    k->draw();
+    kgrid->at(pos->x)->at(pos->y) = k;
+    // Disabling Star
+    grid->at(pos->x)->at(pos->y) = NULL;
+  }
+
+  // Counting Colors ----------
+  for (vector<game::Star*>::iterator it = stars.begin(); it != stars.end(); ++it) {
+    (*it)->count();
+  }
+
+  // Draw and activate all Kristals ----------
+  for (vector<game::Kristal*>::iterator it = kristals.begin(); it != kristals.end(); ++it) {
+    (*it)->activate(grid);
+    (*it)->draw();
+  }
+
+  // More Random Activations ----------
+  for (int i = 0; i < 20; i++) {
+    int rI = rand() % kristals.size();
+    kristals.at(rI)->activate(grid);
   }
 
   // Sorting Kristals at angle to center ----------
@@ -66,37 +121,43 @@ int main(int argc, char* argv[]) {
   int selectedIndex = 0;
   kristals.at(selectedIndex)->select();
 
-  // Creating Stars at all leftover points ----------
-  for (vector<game::Point*>::iterator it = points.begin(); it != points.end(); it++) {
-    game::Point* p = *it;
-    game::Star* s = new game::Star(p->x, p->y);
-    stars.push_back(s);
-    s->draw();
-    grid->at(p->x)->at(p->y) = s;
-  }
-
-  // Marking all targeted Stars ----------
-  for (vector<game::Kristal*>::iterator it = kristals.begin(); it != kristals.end(); ++it) {
-    (*it)->markTargets(grid);
-  }
-
-  // Counting Colors ----------
-  for (vector<game::Star*>::iterator it = stars.begin(); it != stars.end(); ++it) {
-    (*it)->count();
-  }
-
   game::count->draw();
+
+  game::ani_t = ANI_TIME;
 
   // Starting user input cycle ----------
   int inp = ' ';
   while(inp != 'q') {
+    flushinp();
     inp = getch();
-    if(inp == 'n' || inp == 'p') {
-      if(inp == 'n') {
+    if(inp == KEY_MOUSE) {
+      MEVENT event;
+      if (getmouse(&event) == OK) {
+	if (
+	    (event.bstate & BUTTON1_CLICKED) &&
+	    (((event.x - MARGIN) % SCALE) == 0) &&
+	    (event.x < ((D * SCALE) + MARGIN)) &&
+	    (event.y < (D + MARGIN)) &&
+	    (event.y >= MARGIN) &&
+	    (event.x >= MARGIN)
+	   ) {
+	  int x = (event.x - MARGIN) / SCALE;
+	  int y = (event.y - MARGIN);
+	  game::Kristal* clickedKristal = kgrid->at(x)->at(y);
+	  if(clickedKristal != NULL) {
+	    clickedKristal->activate(grid);
+	  }
+	}
+      } else {
+	mvaddstr(1,0,"Nope  ");
+      }
+      
+    } else if(inp == 'n' || inp == 'p' || inp == '\t' || inp == KEY_BACKSPACE) {
+      if(inp == 'n' || inp == '\t') {
         selectedIndex++;
         selectedIndex = selectedIndex % kristals.size();
 	
-      } else if (inp == 'p') {
+      } else if (inp == 'p' || inp == KEY_BACKSPACE) {
         selectedIndex--;
         if(selectedIndex < 0)
       	selectedIndex += kristals.size();
@@ -105,7 +166,7 @@ int main(int argc, char* argv[]) {
       game::Kristal* k = kristals.at(selectedIndex);
       k->select();
       
-    } else if (inp == 'e') {
+    } else if (inp == 'e' || inp == '\n') {
       kristals.at(selectedIndex)->activate(grid);
     }
     
